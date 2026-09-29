@@ -1,0 +1,13 @@
+name: Blueprint Builder
+version: "0.1.0"
+slug: blueprint_builder
+description: Wizard om Home Assistant blueprints te maken op basis van templates
+arch:
+  - amd64
+  - aarch64
+init: false
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:file-document-edit-outline
+panel_title: Blueprints
+homeassistant_api: true

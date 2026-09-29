@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blueprint Builder</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1c1f24; --muted: #5f6672;
+    --border: #d9dde3; --accent: #03a9f4; --accent-text: #ffffff;
+    --error: #c62828; --code-bg: #f0f2f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111418; --card: #1c2026; --text: #e6e8eb; --muted: #9aa2ad;
+      --border: #2e343c; --accent: #29b6f6; --accent-text: #0b0d10;
+      --error: #ef5350; --code-bg: #14171b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .card h2 { font-size: 16px; margin: 0 0 12px; }
+  label.q { display: block; margin-bottom: 14px; }
+  label.q > span { display: block; font-weight: 600; margin-bottom: 4px; }
+  .help { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  input[type=text], input[type=number], select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--text); font: inherit; }
+  .switch { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 14px; cursor: pointer; }
+  .switch input { width: 18px; height: 18px; }
+  button { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 6px;
+    padding: 9px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px;
+    overflow: auto; font-size: 13px; min-height: 200px; margin: 0 0 12px; white-space: pre; }
+  .tpls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .tpl { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; cursor: pointer;
+    background: var(--card); color: var(--text); text-align: left; font-weight: normal; }
+  .tpl.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .tpl b { display: block; }
+  .tpl small { color: var(--muted); }
+  .error { color: var(--error); font-size: 14px; margin-bottom: 10px; }
+  .status { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Blueprint Builder</h1>
+  <p class="sub" id="haStatus">Verbinden met Home Assistant…</p>
+
+  <div class="tpls" id="templates"></div>
+
+  <div class="grid">
+    <section class="card">
+      <h2 id="formTitle">Kies een template</h2>
+      <form id="form"></form>
+      <div class="error" id="errors"></div>
+      <button id="buildBtn" type="button" hidden>Blueprint maken</button>
+    </section>
+    <section class="card">
+      <h2>Resultaat</h2>
+      <pre id="output">Nog niets gegenereerd.</pre>
+      <div class="row">
+        <button id="downloadBtn" type="button" hidden>Download YAML</button>
+        <button id="copyBtn" type="button" class="secondary" hidden>Kopiëren</button>
+        <span class="status" id="copyStatus"></span>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+  // Relatieve URL's zodat het werkt achter HA ingress
+  const api = (p) => fetch('api/' + p).then((r) => r.json());
+
+  let current = null;       // huidige template met vragen
+  let lastResult = null;    // { yaml, filename }
+
+  const $ = (id) => document.getElementById(id);
+
+  async function init() {
+    api('ha/overview').then((o) => {
+      if (o.error) $('haStatus').textContent = 'Home Assistant niet bereikbaar: ' + o.error;
+      else $('haStatus').textContent = `Verbonden: ${o.entity_count} entities, ${o.area_count} ruimtes` +
+        (o.ws_error ? ' (ruimtes niet geladen: ' + o.ws_error + ')' : '');
+    });
+
+    const list = await api('templates');
+    const wrap = $('templates');
+    for (const t of list) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tpl';
+      b.innerHTML = `<b></b><small></small>`;
+      b.querySelector('b').textContent = t.name;
+      b.querySelector('small').textContent = t.description;
+      b.onclick = () => {
+        document.querySelectorAll('.tpl').forEach((x) => x.classList.remove('active'));
+        b.classList.add('active');
+        loadTemplate(t.id);
+      };
+      wrap.appendChild(b);
+    }
+  }
+
+  async function loadTemplate(id) {
+    current = await api(`templates/${id}/questions`);
+    $('formTitle').textContent = current.name;
+    renderForm();
+    $('buildBtn').hidden = false;
+  }
+
+  function values() {
+    const v = {};
+    for (const q of current.questions) {
+      const el = document.querySelector(`[name="${q.key}"]`);
+      if (!el) continue;
+      v[q.key] = q.type === 'boolean' ? el.checked : el.value;
+    }
+    return v;
+  }
+
+  function renderForm() {
+    const prev = $('form').children.length ? values() : {};
+    const form = $('form');
+    form.innerHTML = '';
+
+    for (const q of current.questions) {
+      const val = q.key in prev ? prev[q.key] : q.default;
+      const wrap = document.createElement('div');
+      wrap.dataset.key = q.key;
+
+      if (q.type === 'boolean') {
+        const l = document.createElement('label');
+        l.className = 'switch';
+        const i = document.createElement('input');
+        i.type = 'checkbox'; i.name = q.key; i.checked = !!val;
+        i.onchange = updateVisibility;
+        l.append(i, document.createTextNode(q.label));
+        wrap.appendChild(l);
+      } else {
+        const l = document.createElement('label');
+        l.className = 'q';
+        const s = document.createElement('span');
+        s.textContent = q.label;
+        l.appendChild(s);
+        let el;
+        if (q.type === 'select') {
+          el = document.createElement('select');
+          for (const o of q.options || []) {
+            const opt = document.createElement('option');
+            opt.value = o.value; opt.textContent = o.label;
+            el.appendChild(opt);
+          }
+          el.value = val ?? '';
+        } else {
+          el = document.createElement('input');
+          el.type = q.type === 'number' ? 'number' : 'text';
+          if (q.min !== undefined) el.min = q.min;
+          if (q.max !== undefined) el.max = q.max;
+          el.value = val ?? '';
+        }
+        el.name = q.key;
+        l.appendChild(el);
+        if (q.help) {
+          const h = document.createElement('div');
+          h.className = 'help'; h.textContent = q.help;
+          l.appendChild(h);
+        }
+        wrap.appendChild(l);
+      }
+      form.appendChild(wrap);
+    }
+    updateVisibility();
+  }
+
+  function updateVisibility() {
+    const v = values();
+    for (const q of current.questions) {
+      if (!q.showIf) continue;
+      const show = Object.entries(q.showIf).every(([k, want]) => v[k] === want);
+      document.querySelector(`[data-key="${q.key}"]`).hidden = !show;
+    }
+  }
+
+  $('buildBtn').onclick = async () => {
+    $('errors').textContent = '';
+    const r = await fetch(`api/templates/${current.id}/build`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(values()),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      $('errors').textContent = (data.errors || [data.error]).join(' · ');
+      return;
+    }
+    lastResult = data;
+    $('output').textContent = data.yaml;
+    $('downloadBtn').hidden = false;
+    $('copyBtn').hidden = false;
+  };
+
+  $('downloadBtn').onclick = () => {
+    const blob = new Blob([lastResult.yaml], { type: 'text/yaml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = lastResult.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  $('copyBtn').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(lastResult.yaml);
+      $('copyStatus').textContent = 'Gekopieerd';
+    } catch {
+      $('copyStatus').textContent = 'Kopiëren niet toegestaan, selecteer de tekst handmatig';
+    }
+    setTimeout(() => ($('copyStatus').textContent = ''), 2500);
+  };
+
+  init();
+</script>
+</body>
+</html>
