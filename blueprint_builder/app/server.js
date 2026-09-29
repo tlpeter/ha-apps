@@ -19,7 +19,7 @@ console.log(`Templates geladen: ${Object.keys(templates).join(', ')}`);
 
 function send(res, status, body, type = 'application/json') {
   res.writeHead(status, { 'Content-Type': type });
-  res.end(typeof body === 'string' ? body : JSON.stringify(body));
+  res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 
 function readBody(req) {
