@@ -87,18 +87,35 @@ async function getOverview(force = false) {
   const areaName = Object.fromEntries(areas.map((a) => [a.area_id, a.name]));
   const deviceArea = Object.fromEntries(deviceReg.map((d) => [d.id, d.area_id]));
   const entityArea = {};
+  const entityPlatform = {};
   for (const e of entityReg) {
     entityArea[e.entity_id] = e.area_id || deviceArea[e.device_id] || null;
+    entityPlatform[e.entity_id] = e.platform || null;
   }
 
   const entities = states.map((s) => {
     const areaId = entityArea[s.entity_id] || null;
+    const domain = s.entity_id.split('.')[0];
+
+    // Voor sensoren: welke attributen bevatten een lijst met objecten
+    // (zoals prijslijsten), en welke sleutels heeft het eerste item.
+    const listAttrs = {};
+    if (domain === 'sensor') {
+      for (const [k, v] of Object.entries(s.attributes)) {
+        if (Array.isArray(v) && v.length && v[0] && typeof v[0] === 'object') {
+          listAttrs[k] = Object.keys(v[0]);
+        }
+      }
+    }
+
     return {
       entity_id: s.entity_id,
-      domain: s.entity_id.split('.')[0],
+      domain,
       name: s.attributes.friendly_name || s.entity_id,
       device_class: s.attributes.device_class || null,
       area: areaId ? areaName[areaId] || null : null,
+      platform: entityPlatform[s.entity_id] || null,
+      list_attrs: listAttrs,
     };
   });
 

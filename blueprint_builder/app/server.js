@@ -44,19 +44,21 @@ async function haSafe() {
   }
 }
 
-// Vragen met ingevulde opties (die mogen afhangen van HA-data)
+// Vragen met ingevulde opties en standaardwaarden (die mogen afhangen van HA-data)
 function resolveQuestions(t, ha) {
   return t.questions.map((q) => ({
     ...q,
     options: typeof q.options === 'function' ? q.options(ha) : q.options,
+    default: typeof q.default === 'function' ? q.default(ha) : q.default,
   }));
 }
 
-// Antwoorden controleren en omzetten naar het juiste type
-function normalize(t, raw) {
+// Antwoorden controleren en omzetten naar het juiste type.
+// "questions" zijn de al opgeloste vragen (opties en standaardwaarden ingevuld).
+function normalize(questions, raw) {
   const answers = {};
   const errors = [];
-  for (const q of t.questions) {
+  for (const q of questions) {
     let v = raw[q.key];
     if (v === undefined || v === null || v === '') v = q.default;
     if (q.type === 'number') {
@@ -68,6 +70,10 @@ function normalize(t, raw) {
       v = v === true || v === 'true';
     } else {
       v = v === undefined || v === null ? '' : String(v).trim();
+      if (q.type === 'select' && Array.isArray(q.options) && q.options.length &&
+          !q.options.some((o) => o.value === v)) {
+        errors.push(`${q.label}: ongeldige keuze`);
+      }
     }
     if (q.required && (v === '' || v === undefined)) errors.push(`${q.label}: verplicht`);
     answers[q.key] = v;
@@ -120,7 +126,7 @@ const server = http.createServer(async (req, res) => {
       const t = templates[m[1]];
       if (!t) return send(res, 404, { error: 'Template niet gevonden' });
       const raw = await readBody(req);
-      const { answers, errors } = normalize(t, raw);
+      const { answers, errors } = normalize(resolveQuestions(t, await haSafe()), raw);
       if (errors.length) return send(res, 400, { errors });
       const yaml = dump(t.build(answers));
       return send(res, 200, { yaml, filename: `${slugify(answers.name)}.yaml` });

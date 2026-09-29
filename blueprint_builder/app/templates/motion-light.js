@@ -34,6 +34,7 @@ module.exports = {
           if (e.domain !== 'binary_sensor' || !e.device_class) continue;
           counts[e.device_class] = (counts[e.device_class] || 0) + 1;
         }
+        if (!counts.motion) counts.motion = 0;
         const opts = Object.entries(counts)
           .sort((a, b) => b[1] - a[1])
           .map(([dc, n]) => ({ value: dc, label: `${dc} (${n} in jouw HA)` }));

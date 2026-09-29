@@ -1,5 +1,5 @@
 name: Blueprint Builder
-version: "0.1.1"
+version: "0.2.0"
 slug: blueprint_builder
 description: Wizard om Home Assistant blueprints te maken op basis van templates
 arch:

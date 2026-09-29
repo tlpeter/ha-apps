@@ -34,6 +34,17 @@ function scal(v) {
   return isInput(v) ? `!input ${v[INPUT]}` : scalar(v);
 }
 
+// Meerregelige tekst (zoals Jinja-templates) als leesbaar "|-" blok schrijven
+function isBlock(v) {
+  return typeof v === 'string' && v.includes('\n') && !v.includes('\r') &&
+    !v.endsWith('\n') && !/^\s/.test(v);
+}
+
+function block(s, ind) {
+  const pad = ' '.repeat(ind);
+  return '|-\n' + s.split('\n').map((l) => (l.length ? pad + l : '')).join('\n') + '\n';
+}
+
 function dump(v, ind = 0) {
   const pad = ' '.repeat(ind);
   if (isScalar(v)) return pad + scal(v) + '\n';
@@ -42,6 +53,7 @@ function dump(v, ind = 0) {
     if (!v.length) return pad + '[]\n';
     return v
       .map((item) => {
+        if (isBlock(item)) return `${pad}- ` + block(item, ind + 2);
         if (isScalar(item)) return `${pad}- ${scal(item)}\n`;
         if (Array.isArray(item)) return `${pad}-\n` + dump(item, ind + 2);
         const body = dump(item, ind + 2);
@@ -56,6 +68,7 @@ function dump(v, ind = 0) {
     .map((k) => {
       const val = v[k];
       const key = scalar(k);
+      if (isBlock(val)) return `${pad}${key}: ` + block(val, ind + 2);
       if (isScalar(val)) return `${pad}${key}: ${scal(val)}\n`;
       if (Array.isArray(val) && !val.length) return `${pad}${key}: []\n`;
       if (!Array.isArray(val) && !Object.keys(val).length) return `${pad}${key}: {}\n`;
